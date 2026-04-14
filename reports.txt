@@ -1,0 +1,67 @@
+{
+    "searchSpec": {
+        "itemsType": "avl_resource",
+        "propName": "sys_name",
+        "propValueMask": "*",
+        "sortType": "sys_name",
+        "propType": "",
+        "or_logic": "0"
+    },
+    "dataFlags": 8193,
+    "totalItemsCount": 1,
+    "indexFrom": 0,
+    "indexTo": 0,
+    "items": [
+        {
+            "nm": "demo_fls",
+            "cls": 3,
+            "id": 20523286,
+            "mu": 0,
+            "rep": {
+                "1": {
+                    "id": 1,
+                    "n": "(Demo_fls) Machine Operational Individual Report",
+                    "ct": "avl_unit",
+                    "c": 18948
+                },
+                "2": {
+                    "id": 2,
+                    "n": "(demo_fls)Vehicle Operational Individual Report(Fuel)",
+                    "ct": "avl_unit",
+                    "c": 9015
+                },
+                "3": {
+                    "id": 3,
+                    "n": "(demo_fls) DG Operational Report",
+                    "ct": "avl_unit",
+                    "c": 61656
+                },
+                "4": {
+                    "id": 4,
+                    "n": "(demo_fls) TM Operational Report",
+                    "ct": "avl_unit",
+                    "c": 2270
+                },
+                "5": {
+                    "id": 5,
+                    "n": "(demo) Load Sensor Report Individual",
+                    "ct": "avl_unit",
+                    "c": 7299
+                },
+                "6": {
+                    "id": 6,
+                    "n": "API INDIVIDUAL REPORT",
+                    "ct": "avl_unit",
+                    "c": 15604
+                },
+                "7": {
+                    "id": 7,
+                    "n": "API GROUP REPORT",
+                    "ct": "avl_unit_group",
+                    "c": 33225
+                }
+            },
+            "uacl": 52913446649831
+        }
+    ]
+}
