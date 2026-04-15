@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const WIALON_API_URL = 'https://hst-api.wialon.com/wialon/ajax.html';
+const WIALON_API_URL = process.env.WIALON_API_URL || 'https://hst-api.wialon.com/wialon/ajax.html';
 
 
 // ─── Wialon API helper ────────────────────────────────────────────────────────
@@ -15,6 +15,16 @@ const wialonCall = (method, svc, params, sid) =>
             ...(sid && { sid })
         }
     });
+
+// ─── Cell normalizer ──────────────────────────────────────────────────────────
+// Wialon cells are either plain strings or objects: { t: "display text", v: raw }
+// Always return the human-readable text.
+
+const cellText = (cell) => {
+    if (cell === null || cell === undefined) return '';
+    if (typeof cell === 'object') return cell.t ?? '';
+    return String(cell);
+};
 
 // ─── Step 1: Authenticate ─────────────────────────────────────────────────────
 
@@ -66,13 +76,13 @@ const executeReport = async (sid, reportId, resourceId, objectId, reportFrom, re
 
 // ─── Step 3: Fetch result rows ────────────────────────────────────────────────
 
-const fetchResultRows = async (sid, tableIndex) => {
-    console.log(`[REPORT] Fetching rows for tableIndex=${tableIndex}`);
+const fetchResultRows = async (sid, tableIndex, rowCount) => {
+    console.log(`[REPORT] Fetching ${rowCount} row(s) for tableIndex=${tableIndex}`);
 
     const res = await wialonCall('GET', 'report/get_result_rows', {
         tableIndex,
         indexFrom: 0,
-        indexTo: 100
+        indexTo: rowCount
     }, sid);
 
     if (res.data.error) {
@@ -81,6 +91,10 @@ const fetchResultRows = async (sid, tableIndex) => {
     }
 
     console.log(`[REPORT] Retrieved ${res.data.length} row(s) from tableIndex=${tableIndex}`);
+    // Log raw cells of first row so we can see the exact types Wialon is sending
+    if (res.data.length > 0) {
+        console.log('[REPORT] Raw cells of first row:', JSON.stringify(res.data[0].c));
+    }
     return res.data;
 };
 
@@ -102,9 +116,6 @@ const getReportData = async (wialonToken, reportId, resourceId, objectId, report
         return { status: 'ACCESS_DENIED', data: null };
     }
 
-    // 3. Fetch result rows
-    const table0 = await fetchResultRows(sid, 0);
-
     const toIST = (unix) =>
         new Date(unix * 1000).toLocaleString('en-IN', {
             timeZone: 'Asia/Kolkata',
@@ -113,10 +124,38 @@ const getReportData = async (wialonToken, reportId, resourceId, objectId, report
             hour12: true
         }) + ' IST';
 
-    console.log(`[REPORT] Data ready — ${table0.length} row(s) returned.`);
+    // 3. Extract table metadata — headers + actual row count
+    const tableInfo = execResult?.reportResult?.tables?.[0];
+    const headers = tableInfo?.header ?? [];
+    const rowCount = tableInfo?.rows ?? 0;
+
+    console.log(`[REPORT] Table info — columns: [${headers.join(', ')}], rows: ${rowCount}`);
+
+    if (rowCount === 0) {
+        console.log('[REPORT] No data rows in report result.');
+        return {
+            status: 'SUCCESS',
+            data: { from: toIST(reportFrom), to: toIST(reportTo), headers, rows: [] }
+        };
+    }
+
+    // 4. Fetch result rows using the actual row count
+    const rawRows = await fetchResultRows(sid, 0, rowCount);
+
+    // 5. Normalize each cell (handles plain strings and Wialon {t, v} objects)
+    //    Map to named columns when headers are available
+    const rows = rawRows.map((row) => {
+        const cells = (row.c || []).map(cellText);
+        if (headers.length > 0) {
+            return Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? '']));
+        }
+        return cells;
+    });
+
+    console.log(`[REPORT] Data ready — ${rows.length} row(s) returned.`);
     return {
         status: 'SUCCESS',
-        data: { from: toIST(reportFrom), to: toIST(reportTo), rows: table0 }
+        data: { from: toIST(reportFrom), to: toIST(reportTo), headers, rows }
     };
 };
 
