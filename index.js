@@ -1,4 +1,7 @@
 require('dotenv').config();
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const vehicleRoutes = require('./routes/getVehicleRoute');
@@ -26,6 +29,22 @@ app.use((err, _req, res, _next) => {
     });
 });
 
-app.listen(port, () => {
-    console.log(`[SERVER] API running on port ${port}`);
-});
+const sslKey  = process.env.SSL_KEY;
+const sslCert = process.env.SSL_CERT;
+const sslCa   = process.env.SSL_CA;
+
+if (sslKey && sslCert) {
+    const sslOptions = {
+        key:  fs.readFileSync(sslKey),
+        cert: fs.readFileSync(sslCert),
+        ...(sslCa && { ca: fs.readFileSync(sslCa) })
+    };
+
+    https.createServer(sslOptions, app).listen(port, () => {
+        console.log(`[SERVER] HTTPS server running on port ${port}`);
+    });
+} else {
+    http.createServer(app).listen(port, () => {
+        console.warn('[SERVER] SSL certs not found in env — running HTTP only on port ' + port);
+    });
+}
