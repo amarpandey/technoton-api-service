@@ -5,7 +5,7 @@ const getVehicleController = require('../controllers/getVehicleController');
 router.get('/', (_req, res) => {
     res.status(200).json({
         success: true,
-        message: 'Nigrani Vehicle Report Service is running.'
+        message: 'Vehicle Report Service is running.'
     });
 });
 

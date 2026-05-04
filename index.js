@@ -27,5 +27,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-    console.log(`[SERVER] Nigrani API running on port ${port}`);
+    console.log(`[SERVER] API running on port ${port}`);
 });

@@ -109,7 +109,8 @@ const getVehicleDetails = async (req, res) => {
             });
         }
 
-        console.log(`[${requestId}] Success — returning ${result.data.rows.length} row(s).`);
+        const totalRows = (result.data.tables ?? []).reduce((s, t) => s + t.rows.length, 0);
+        console.log(`[${requestId}] Success — ${result.data.tables?.length ?? 0} table(s), ${totalRows} total row(s).`);
         return res.status(200).json({
             success: true,
             code: 'OK',

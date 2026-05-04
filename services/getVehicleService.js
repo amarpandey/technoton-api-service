@@ -2,6 +2,9 @@ const axios = require('axios');
 
 const WIALON_API_URL = process.env.WIALON_API_URL || 'https://hst-api.wialon.com/wialon/ajax.html';
 
+// TODO: remove this limit once testing is complete
+const TEST_ROW_LIMIT=2000;
+
 
 // ─── Wialon API helper ────────────────────────────────────────────────────────
 
@@ -18,7 +21,6 @@ const wialonCall = (method, svc, params, sid) =>
 
 // ─── Cell normalizer ──────────────────────────────────────────────────────────
 // Wialon cells are either plain strings or objects: { t: "display text", v: raw }
-// Always return the human-readable text.
 
 const cellText = (cell) => {
     if (cell === null || cell === undefined) return '';
@@ -70,19 +72,25 @@ const executeReport = async (sid, reportId, resourceId, objectId, reportFrom, re
         throw new Error(`WIALON_EXEC_ERROR:${res.data.error}`);
     }
 
-    console.log('[REPORT] Report executed successfully.');
+    const tables = res.data?.reportResult?.tables ?? [];
+    console.log(`[REPORT] Report executed — ${tables.length} table(s) found:`);
+    tables.forEach((t, i) =>
+        console.log(`  [${i}] name="${t.name}" label="${t.label}" rows=${t.rows} columns=[${(t.header ?? []).join(', ')}]`)
+    );
+
     return res.data;
 };
 
-// ─── Step 3: Fetch result rows ────────────────────────────────────────────────
+// ─── Step 3: Fetch rows for a single table ────────────────────────────────────
 
-const fetchResultRows = async (sid, tableIndex, rowCount) => {
-    console.log(`[REPORT] Fetching ${rowCount} row(s) for tableIndex=${tableIndex}`);
+const fetchTableRows = async (sid, tableIndex, rowCount) => {
+    const limit = Math.min(rowCount, TEST_ROW_LIMIT);
+    console.log(`[REPORT] Fetching table[${tableIndex}] — ${limit} of ${rowCount} row(s)`);
 
     const res = await wialonCall('GET', 'report/get_result_rows', {
         tableIndex,
         indexFrom: 0,
-        indexTo: rowCount
+        indexTo: limit
     }, sid);
 
     if (res.data.error) {
@@ -90,13 +98,24 @@ const fetchResultRows = async (sid, tableIndex, rowCount) => {
         throw new Error(`WIALON_ROWS_ERROR:${res.data.error}`);
     }
 
-    console.log(`[REPORT] Retrieved ${res.data.length} row(s) from tableIndex=${tableIndex}`);
-    // Log raw cells of first row so we can see the exact types Wialon is sending
+    console.log(`[REPORT] table[${tableIndex}] — retrieved ${res.data.length} row(s)`);
     if (res.data.length > 0) {
-        console.log('[REPORT] Raw cells of first row:', JSON.stringify(res.data[0].c));
+        console.log(`[REPORT] table[${tableIndex}] raw cells[0]:`, JSON.stringify(res.data[0].c));
     }
+
     return res.data;
 };
+
+// ─── Step 4: Normalize rows into named-column objects ─────────────────────────
+
+const normalizeRows = (rawRows, headers) =>
+    rawRows.map((row) => {
+        const cells = (row.c || []).map(cellText);
+        if (headers.length > 0) {
+            return Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? '']));
+        }
+        return cells;
+    });
 
 // ─── Main service function ────────────────────────────────────────────────────
 
@@ -124,38 +143,42 @@ const getReportData = async (wialonToken, reportId, resourceId, objectId, report
             hour12: true
         }) + ' IST';
 
-    // 3. Extract table metadata — headers + actual row count
-    const tableInfo = execResult?.reportResult?.tables?.[0];
-    const headers = tableInfo?.header ?? [];
-    const rowCount = tableInfo?.rows ?? 0;
+    // 3. Iterate over ALL tables in the report result
+    const allTables = execResult?.reportResult?.tables ?? [];
 
-    console.log(`[REPORT] Table info — columns: [${headers.join(', ')}], rows: ${rowCount}`);
-
-    if (rowCount === 0) {
-        console.log('[REPORT] No data rows in report result.');
+    if (allTables.length === 0) {
+        console.log('[REPORT] No tables in report result.');
         return {
             status: 'SUCCESS',
-            data: { from: toIST(reportFrom), to: toIST(reportTo), headers, rows: [] }
+            data: { from: toIST(reportFrom), to: toIST(reportTo), tables: [] }
         };
     }
 
-    // 4. Fetch result rows using the actual row count
-    const rawRows = await fetchResultRows(sid, 0, rowCount);
+    // 4. Fetch and normalize rows for each table sequentially
+    const tables = [];
+    for (let i = 0; i < allTables.length; i++) {
+        const meta = allTables[i];
+        const headers = meta.header ?? [];
+        const rowCount = meta.rows ?? 0;
 
-    // 5. Normalize each cell (handles plain strings and Wialon {t, v} objects)
-    //    Map to named columns when headers are available
-    const rows = rawRows.map((row) => {
-        const cells = (row.c || []).map(cellText);
-        if (headers.length > 0) {
-            return Object.fromEntries(headers.map((h, i) => [h, cells[i] ?? '']));
+        if (rowCount === 0) {
+            console.log(`[REPORT] table[${i}] "${meta.label}" — 0 rows, skipping fetch.`);
+            tables.push({ name: meta.name, label: meta.label, headers, rows: [] });
+            continue;
         }
-        return cells;
-    });
 
-    console.log(`[REPORT] Data ready — ${rows.length} row(s) returned.`);
+        const rawRows = await fetchTableRows(sid, i, rowCount);
+        const rows = normalizeRows(rawRows, headers);
+
+        tables.push({ name: meta.name, label: meta.label, headers, rows });
+    }
+
+    const totalRows = tables.reduce((sum, t) => sum + t.rows.length, 0);
+    console.log(`[REPORT] Done — ${tables.length} table(s), ${totalRows} total row(s) returned.`);
+
     return {
         status: 'SUCCESS',
-        data: { from: toIST(reportFrom), to: toIST(reportTo), headers, rows }
+        data: { from: toIST(reportFrom), to: toIST(reportTo), tables }
     };
 };
 
