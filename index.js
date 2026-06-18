@@ -5,6 +5,7 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const vehicleRoutes = require('./routes/getVehicleRoute');
+const globalAutoRoutes = require('./routes/globalAutoRoute');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -18,6 +19,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.set('json spaces', 2);
 app.use('/', vehicleRoutes);
+app.use('/globalauto', globalAutoRoutes);
 
 // Global error handler — must be registered after routes
 app.use((err, _req, res, _next) => {
@@ -29,11 +31,12 @@ app.use((err, _req, res, _next) => {
     });
 });
 
+const isProduction = process.env.NODE_ENV === 'production';
 const sslKey  = process.env.SSL_KEY;
 const sslCert = process.env.SSL_CERT;
 const sslCa   = process.env.SSL_CA;
 
-if (sslKey && sslCert) {
+if (isProduction && sslKey && sslCert) {
     const sslOptions = {
         key:  fs.readFileSync(sslKey),
         cert: fs.readFileSync(sslCert),
@@ -45,6 +48,10 @@ if (sslKey && sslCert) {
     });
 } else {
     http.createServer(app).listen(port, () => {
-        console.warn('[SERVER] SSL certs not found in env — running HTTP only on port ' + port);
+        if (isProduction) {
+            console.warn('[SERVER] SSL certs not found in env — running HTTP only on port ' + port);
+        } else {
+            console.log(`[SERVER] Running in development mode — HTTP only on port ${port}`);
+        }
     });
 }
